@@ -1,0 +1,14 @@
+# Copy to inventory.yml (gitignored) and fill in. This repository is public:
+# the real address and the real public keys live only in the copy.
+droplet:
+  hosts:
+    production:
+      ansible_host: 203.0.113.10   # a documentation address, not the Droplet's
+      ansible_user: root
+  vars:
+    # Only the keys listed here are managed. Any other line in deploy's
+    # authorized_keys (Orbit Ops's deploy key, the backup-export key) is left
+    # exactly as it is.
+    droplet_host_deploy_authorized_keys:
+      - key: "ssh-ed25519 AAAA...replace... github-actions budget-buddy deploy"
+        key_options: "no-agent-forwarding,no-port-forwarding,no-X11-forwarding"

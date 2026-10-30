@@ -1,0 +1,23 @@
+# A drop-in, not an edit of sshd_config. sshd keeps the FIRST value it reads,
+# and drop-ins are read in name order before the main file, so 10- outranks a
+# provider's 50-cloud-init.conf.
+# `sshd -t` refuses to run without its privilege-separation directory, which
+# ssh.service creates when it starts. On 24.04 sshd is socket-activated, so a
+# fresh host has no /run/sshd until someone connects.
+- name: sshd's privilege-separation directory, for validation
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    mode: "0755"
+
+- name: Keys only, never a password
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-droplet-host.conf
+    mode: "0644"
+    content: |
+      # Managed by Ansible (droplet_host). RUNBOOK §8: no password authentication.
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd

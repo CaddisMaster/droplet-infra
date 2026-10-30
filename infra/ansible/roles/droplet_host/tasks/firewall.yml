@@ -1,0 +1,27 @@
+# RUNBOOK §2. 22 is allowed BEFORE ufw is enabled, so enabling it over SSH
+# cannot lock the session out. ⚠️ ufw does not cover Docker's published ports
+# (Docker writes its own iptables rules); the 127.0.0.1 prefix on every compose
+# port mapping is what keeps the apps private (§1).
+- name: Allow SSH
+  community.general.ufw:
+    rule: allow
+    port: "22"
+
+- name: Allow HTTP and HTTPS
+  community.general.ufw:
+    rule: allow
+    name: Nginx Full
+
+- name: Deny incoming by default
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Allow outgoing by default
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: Firewall on
+  community.general.ufw:
+    state: enabled

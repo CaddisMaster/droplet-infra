@@ -1,0 +1,24 @@
+# The base only. Each app role owns its own sites-available file and its
+# sites-enabled link; this role never lists, purges or templates that
+# directory, so a site it did not create (learn, www) survives every run.
+- name: Disable the packaged default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  when: droplet_host_nginx_disable_default
+  notify: Reload nginx
+
+- name: Nginx runs and starts at boot
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+
+# Certbot is installed and its renewal timer runs, but this role never asks
+# for a certificate. Issuing one is per site, so it belongs to the app roles,
+# and a test container must never reach Let's Encrypt (RUNBOOK §4).
+- name: Certificate renewal runs on its timer
+  ansible.builtin.service:
+    name: certbot.timer
+    state: started
+    enabled: true

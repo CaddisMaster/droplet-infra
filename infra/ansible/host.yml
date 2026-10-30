@@ -1,0 +1,7 @@
+# The shared Droplet's host layer (#530): no app in it. Budget Buddy's app role
+# (#531) and Orbit Ops's (orbit-ops #322) run on top of this.
+- name: The Droplet's host layer
+  hosts: droplet
+  become: true
+  roles:
+    - droplet_host

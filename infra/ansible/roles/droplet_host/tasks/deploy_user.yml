@@ -1,0 +1,29 @@
+- name: The deploy user, in the docker group, with no sudo
+  ansible.builtin.user:
+    name: "{{ droplet_host_deploy_user }}"
+    groups: docker
+    append: true
+    shell: /bin/bash
+    create_home: true
+
+- name: The deploy user's .ssh directory
+  ansible.builtin.file:
+    path: "/home/{{ droplet_host_deploy_user }}/.ssh"
+    state: directory
+    owner: "{{ droplet_host_deploy_user }}"
+    group: "{{ droplet_host_deploy_user }}"
+    mode: "0700"
+
+# exclusive: false is load-bearing. The file is shared, and a line this role
+# did not declare (Orbit Ops's deploy key, the backup-export key) must survive.
+- name: The keys this role declares
+  ansible.posix.authorized_key:
+    user: "{{ droplet_host_deploy_user }}"
+    key: "{{ item.key }}"
+    key_options: "{{ item.key_options | default(omit) }}"
+    exclusive: false
+    manage_dir: false
+    state: present
+  loop: "{{ droplet_host_deploy_authorized_keys }}"
+  loop_control:
+    label: "{{ item.key.split()[-1] }}"

@@ -1,0 +1,36 @@
+- name: Docker's apt signing key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Docker's apt repository
+  ansible.builtin.template:
+    src: docker.sources.j2
+    dest: /etc/apt/sources.list.d/docker.sources
+    mode: "0644"
+  register: droplet_host_docker_repo
+
+- name: Host packages
+  ansible.builtin.apt:
+    name:
+      - ufw
+      - openssh-server
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - nginx
+      - certbot
+      - python3-certbot-nginx
+    state: present
+    update_cache: true
+    # A new repository must be read now, not within the hour.
+    cache_valid_time: "{{ 0 if droplet_host_docker_repo is changed else 3600 }}"
+
+- name: Docker runs and starts at boot
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true

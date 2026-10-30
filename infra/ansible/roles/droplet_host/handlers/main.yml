@@ -1,0 +1,10 @@
+# Socket-activated on 24.04: try-reload-or-restart does nothing harmful when
+# sshd is not running yet, where a plain reload fails.
+- name: Reload sshd
+  ansible.builtin.command: systemctl try-reload-or-restart ssh.service
+  changed_when: true
+
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded

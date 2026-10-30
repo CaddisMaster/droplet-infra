@@ -1,0 +1,3 @@
+# The Ansible control node (#530). Installed into infra/.venv by infra/test.sh,
+# never into the app image. Exact pins only; tests/test_infra_pins.py holds that.
+ansible-core==2.21.5

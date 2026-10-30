@@ -1,0 +1,19 @@
+# ⚠️ These names are an INTERFACE: Orbit Ops pins this role by commit SHA
+# (orbit-ops #322). A rename needs a pin bump there, so call it out in the PR.
+
+# The unprivileged user CI deploys as. Docker group, no sudo.
+droplet_host_deploy_user: deploy
+
+# Keys this role manages in the deploy user's authorized_keys, each
+# {key: "<type> <base64> <comment>", key_options: "<options>"}. Managed
+# NON-exclusively: a line not listed here is never touched, because the file is
+# shared with Orbit Ops's deploy key and the backup-export key.
+droplet_host_deploy_authorized_keys: []
+
+# The host stays on UTC deliberately: every log timestamp on the box is UTC,
+# and the backup timer's 06:00 is written against it.
+droplet_host_timezone: Etc/UTC
+
+# The packaged `default` site is disabled on production (only the app sites are
+# enabled). This is the one Nginx site the role removes, and only by this name.
+droplet_host_nginx_disable_default: true

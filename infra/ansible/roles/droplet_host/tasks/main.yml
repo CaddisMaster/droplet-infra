@@ -1,0 +1,21 @@
+# RUNBOOK §1–4, described. Order matters twice: ufw's `Nginx Full` profile
+# only exists once nginx is installed, and the deploy user's docker group only
+# exists once Docker is.
+- name: Packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Timezone
+  community.general.timezone:
+    name: "{{ droplet_host_timezone }}"
+
+- name: SSH
+  ansible.builtin.import_tasks: ssh.yml
+
+- name: Firewall
+  ansible.builtin.import_tasks: firewall.yml
+
+- name: Deploy user
+  ansible.builtin.import_tasks: deploy_user.yml
+
+- name: Nginx and Certbot
+  ansible.builtin.import_tasks: nginx.yml

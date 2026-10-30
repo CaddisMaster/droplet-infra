@@ -1,0 +1,7 @@
+# Collections the roles use, pinned exactly (#530). infra/test.sh installs them
+# into infra/ansible/collections/, which is gitignored.
+collections:
+  - name: community.general   # the lxd connection, ufw, timezone
+    version: "13.5.0"
+  - name: ansible.posix       # authorized_key
+    version: "2.2.2"
