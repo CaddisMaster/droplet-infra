@@ -94,4 +94,4 @@ cd ~ && rm -rf "$tmp"
 ```
 
 Every difference it reports gets one of two outcomes: **fix the role**, or **record it in
-RUNBOOK as deliberate.** Production is never changed to match the role.
+RUNBOOK as deliberate** (RUNBOOK §8, "Where the host role and production differ"). Production is never changed to match the role.
