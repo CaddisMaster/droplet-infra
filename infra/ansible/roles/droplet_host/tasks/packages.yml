@@ -1,13 +1,24 @@
+# ⚠️ Docker the way PRODUCTION has it (#548): Ubuntu's docker.io engine, plus
+# only the Compose plugin from Docker's repository. #530's check-mode run found
+# this; a role that installed docker-ce would remove docker.io and swap the
+# engine under both apps on its first real run. Moving production to docker-ce
+# is its own scheduled change, never a side effect of this role.
+
+# The checksum lets check mode compare the key without downloading it. If
+# Docker rotates the key, the run fails here, which is the signal to look.
 - name: Docker's apt signing key
   ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
     dest: /etc/apt/keyrings/docker.asc
+    checksum: sha256:1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570
     mode: "0644"
 
+# One line in docker.list, byte-identical to production's, so the file carries
+# no "managed by" comment. A docker.sources beside it would duplicate the source.
 - name: Docker's apt repository
   ansible.builtin.template:
-    src: docker.sources.j2
-    dest: /etc/apt/sources.list.d/docker.sources
+    src: docker.list.j2
+    dest: /etc/apt/sources.list.d/docker.list
     mode: "0644"
   register: droplet_host_docker_repo
 
@@ -16,10 +27,7 @@
     name:
       - ufw
       - openssh-server
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
+      - docker.io
       - docker-compose-plugin
       - nginx
       - certbot

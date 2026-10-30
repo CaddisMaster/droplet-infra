@@ -109,6 +109,16 @@ rules=$(grep -E 'ALLOW IN' <<<"$ufw" | grep -v '(v6)' | awk '{print $1}' | sort 
 [[ $rules == "22 80,443/tcp " ]] || die "ufw allows '$rules', RUNBOOK §2 says '22 80,443/tcp'"
 
 ct docker compose version
+# #548: production's engine is Ubuntu's docker.io, with only the Compose plugin
+# from Docker's repository. A role that installs docker-ce would swap the engine
+# under both apps on its first real run.
+pkgs=$(ct dpkg-query -W -f='${Package} ${Status}\n' docker.io docker-ce docker-compose-plugin 2>/dev/null || true)
+echo "$pkgs"
+grep -qx 'docker.io install ok installed' <<<"$pkgs" || die "docker.io is not installed; production runs docker.io"
+! grep -qx 'docker-ce install ok installed' <<<"$pkgs" || die "docker-ce is installed; production runs docker.io"
+grep -qx 'docker-compose-plugin install ok installed' <<<"$pkgs" || die "Docker's Compose plugin is not installed"
+ct test -f /etc/apt/sources.list.d/docker.list || die "Docker's repository is not in docker.list, where production has it"
+ct test ! -e /etc/apt/sources.list.d/docker.sources || die "docker.sources exists; production's repository is docker.list, and both would duplicate it"
 ct nginx -t
 ct test -f /etc/nginx/sites-available/bb-unmanaged || die "the unmanaged site file was removed"
 ct test -L /etc/nginx/sites-enabled/bb-unmanaged || die "the unmanaged sites-enabled link was removed"

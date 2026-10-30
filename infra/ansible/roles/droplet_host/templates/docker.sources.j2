@@ -1,8 +1,0 @@
-# Managed by Ansible (droplet_host). Docker's own repository, so the Compose
-# plugin is `docker compose`, not Ubuntu's docker.io.
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: {{ ansible_facts['distribution_release'] }}
-Components: stable
-Architectures: {{ 'arm64' if ansible_facts['architecture'] == 'aarch64' else 'amd64' }}
-Signed-By: /etc/apt/keyrings/docker.asc
