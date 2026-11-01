@@ -75,11 +75,10 @@ oneshot systemd unit ordered `After=docker.service` belongs in `personal-vault/i
 
 ## Checking production
 
-Check mode only, never a real run (#530's scope). Since 2026-10-30 the VM can reach production
-(while the editor connection is up), so the check can run from this clone, checked out at the
-reviewed commit. The recipe below is the **Mac** route: the Mac keeps **no clone** of this
-repo, and Sean's decision on #530 (2026-10-29) was **a throwaway clone pinned to the reviewed
-commit, deleted afterwards.**
+Check mode only, never a real run (#530's scope). This runs from a **Mac terminal**: the VM
+can't reach production (since 2026-11-01). The Mac keeps **no clone** of this repo, and Sean's
+decision on #530 (2026-10-29) was **a throwaway clone pinned to the reviewed commit, deleted
+afterwards.**
 
 ```bash
 SHA=<the reviewed commit on main>
