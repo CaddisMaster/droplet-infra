@@ -85,7 +85,9 @@ SHA=<the reviewed commit on main>
 tmp=$(mktemp -d) && git -C "$tmp" init -q \
   && git -C "$tmp" fetch -q --depth 1 https://github.com/CaddisMaster/budget-buddy.git "$SHA" \
   && git -C "$tmp" checkout -q FETCH_HEAD && cd "$tmp/infra/ansible"
-python3 -m venv ../.venv && ../.venv/bin/pip install -q -r ../requirements-infra.txt
+brew install python@3.12   # ansible-core needs 3.12 or newer; the Mac's default python3 is older
+"$(brew --prefix python@3.12)/bin/python3.12" -m venv ../.venv \
+  && ../.venv/bin/pip install -q --no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check
 ../.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
 cp inventory.example.yml inventory.yml   # then fill in the address and the real public keys
 ../.venv/bin/ansible-playbook host.yml --check --diff

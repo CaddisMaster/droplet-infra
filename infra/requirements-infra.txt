@@ -1,3 +1,13 @@
 # The Ansible control node (#530). Installed into infra/.venv by infra/test.sh,
-# never into the app image. Exact pins only; tests/test_infra_pins.py holds that.
+# never into the app image. Exact pins, transitive included (#553): test.sh installs
+# with --no-deps into a clean venv and then runs `pip check`, so a dependency missing
+# from this list fails the run. tests/test_infra_pins.py holds all of that.
 ansible-core==2.21.5
+cffi==2.1.1
+cryptography==50.0.2
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+packaging==26.3
+pycparser==3.12
+PyYAML==6.0.3
+resolvelib==1.2.1

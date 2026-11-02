@@ -80,11 +80,60 @@ def test_ansible_core_is_pinned_in_one_file_only():
     assert hits == ["infra/requirements-infra.txt"]
 
 
+def _names(text):
+    return {line.split("==")[0].lower() for line in _requirement_lines(text)}
+
+
+def _pip_entry_directories(text):
+    """The `directory:` of each pip block in a dependabot.yml, read as text."""
+    blocks = re.split(r"^\s*-\s*package-ecosystem:\s*", text, flags=re.M)[1:]
+    return [
+        re.search(r'directory:\s*"([^"]+)"', block).group(1)
+        for block in blocks
+        if block.startswith("pip")
+    ]
+
+
+@pytest.mark.criterion(553, "The control node installs only pinned packages")
+def test_the_control_node_installs_only_pinned_packages():
+    # ansible-core's own requirements, so they cannot float underneath it.
+    assert {"jinja2", "pyyaml", "cryptography", "packaging", "resolvelib"} <= _names(REQS.read_text())
+
+    script = (INFRA / "test.sh").read_text()
+    assert 'pip" install -q --no-deps -r' in script
+    assert 'pip" check' in script
+    # Over an old venv, a leftover package would satisfy pip check.
+    assert "-m venv --clear" in script
+
+
+@pytest.mark.criterion(553, "Dependabot proposes bumps for the control node")
+def test_dependabot_proposes_bumps_for_the_control_node():
+    config = (REPO_ROOT / ".github/dependabot.yml").read_text()
+    assert "/infra" in _pip_entry_directories(config)
+
+
+def test_the_production_check_names_a_python_ansible_core_can_run_on():
+    # #567: the Mac's default python3 is too old for ansible-core 2.21.
+    readme = (INFRA / "README.md").read_text()
+    assert "python3 -m venv" not in readme
+    assert "python3.12\" -m venv" in readme
+    assert "--no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check" in readme
+
+
 # --- the detectors themselves can fail ---------------------------------------
 
 @pytest.mark.parametrize("line", ["ansible-core>=2.21", "ansible-core", "ansible-core~=2.21.0"])
 def test_a_loose_requirement_is_caught(line):
     assert unpinned_requirements(line + "\n") == [line]
+
+
+def test_a_pip_entry_for_another_directory_is_not_mistaken_for_infra():
+    text = (
+        "updates:\n"
+        '  - package-ecosystem: pip\n    directory: "/"\n'
+        '  - package-ecosystem: docker\n    directory: "/infra"\n'
+    )
+    assert _pip_entry_directories(text) == ["/"]
 
 
 def test_a_collection_without_an_exact_version_is_caught():

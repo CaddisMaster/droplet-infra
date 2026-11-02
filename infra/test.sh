@@ -28,8 +28,11 @@ lxc storage show default >/dev/null 2>&1 || die "LXD is not initialised; see inf
 # --- the control node: pinned ansible-core and collections ------------------
 step "control node"
 if [[ ! -x $venv/bin/ansible-playbook ]] || ! cmp -s "$here/requirements-infra.txt" "$venv/.requirements"; then
-  python3 -m venv "$venv"
-  "$venv/bin/pip" install -q -r "$here/requirements-infra.txt"
+  # --clear: over an old venv, a package already installed would satisfy pip check
+  # and hide a dependency this list has lost (#553).
+  python3 -m venv --clear "$venv"
+  "$venv/bin/pip" install -q --no-deps -r "$here/requirements-infra.txt"
+  "$venv/bin/pip" check || die "requirements-infra.txt is missing a dependency; pin it there"
   cp "$here/requirements-infra.txt" "$venv/.requirements"
 fi
 export PATH="$venv/bin:$PATH"
