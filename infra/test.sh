@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Test the roles in a throwaway LXD system container on the VM:
 #   host role (#530): launch -> run -> plant unmanaged things -> run again (changed=0) -> verify
-#   app roles (#531): refusals -> run -> run again (changed=0) -> a deploy is not drift -> verify
+#   app roles (#531, #532): refusals -> run -> run again (changed=0) -> a deploy is not drift
+#     -> verify -> a real backup into a real Postgres container -> the backup key's refusals
 #   then delete
 #
 #   infra/test.sh            # keeps nothing
@@ -73,6 +74,7 @@ lxc exec "$name" -- sh -c 'echo "127.0.0.1 acme-v02.api.letsencrypt.org" >> /etc
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"; [[ ${KEEP:-} == 1 ]] || delete_container "$name"' EXIT
 ssh-keygen -q -t ed25519 -N '' -C 'bb-test declared' -f "$tmp/declared"
+ssh-keygen -q -t ed25519 -N '' -C 'bb-test backup' -f "$tmp/backup"
 cat > "$tmp/inventory.yml" <<EOF
 droplet:
   hosts:
@@ -82,6 +84,8 @@ droplet:
     droplet_host_deploy_authorized_keys:
       - key: "$(cat "$tmp/declared.pub")"
         key_options: "no-agent-forwarding,no-port-forwarding,no-X11-forwarding"
+    # A throwaway key with production's options, so the forced command can be driven.
+    budget_buddy_backup_key: "$(cat "$tmp/backup.pub")"
 EOF
 
 # --- first run ---------------------------------------------------------------
@@ -190,6 +194,19 @@ refused no-snippet 'seandesmet-security-headers.conf is missing'
 ct test ! -e /etc/nginx/sites-enabled/seandesmet.com || die "the www site was enabled before its snippet existed"
 ct sh -c 'echo "add_header X-BB-Stand-In www;" > /etc/nginx/snippets/seandesmet-security-headers.conf'
 
+step "no ping URL file: the run must fail and name it"
+refused no-ping-url '/etc/backup-export/healthchecks-url must exist'
+ct test ! -e /etc/backup-export/healthchecks-url || die "the role created the ping URL file"
+
+step "ping URL file mode 644: the run must fail and leave it alone"
+# A stand-in healthchecks.io on the container's loopback, which records each ping.
+ct sh -c 'echo http://127.0.0.1:8098/hc > /etc/backup-export/healthchecks-url && chown root:deploy /etc/backup-export/healthchecks-url && chmod 644 /etc/backup-export/healthchecks-url'
+before=$(ct sha256sum /etc/backup-export/healthchecks-url)
+refused bad-url-mode '/etc/backup-export/healthchecks-url must exist'
+[[ $(ct sha256sum /etc/backup-export/healthchecks-url) == "$before" ]] || die "the role changed the ping URL file"
+! grep -q '127.0.0.1:8098' "$tmp/bad-url-mode.log" || die "the run printed the ping URL"
+ct chmod 640 /etc/backup-export/healthchecks-url
+
 step "first run of the app playbook"
 play app.yml
 
@@ -248,11 +265,73 @@ body=$(ct curl -sk "${www[@]}" https://seandesmet.com/)
 headers=$(ct curl -skI "${www[@]}" https://seandesmet.com/)
 grep -qi '^x-bb-stand-in: www' <<<"$headers" || die "the www site does not include its headers snippet"
 
+# --- the backups (#532) ----------------------------------------------------------
+step "a rebuilt host takes backups"
+for f in budget-buddy-backup backup-export; do
+  cmp -s <(ct cat "/usr/local/bin/$f") "$ansible_dir/roles/budget_buddy_backup/files/$f" || die "$f differs from the role's"
+  [[ $(ct stat -c '%a %U:%G' "/usr/local/bin/$f") == '755 root:root' ]] || die "$f is not 755 root:root"
+done
+[[ $(ct stat -c '%a %U:%G' /var/backups/budget-buddy) == '750 deploy:deploy' ]] || die "the backup root is not 750 deploy:deploy"
+[[ $(ct systemctl is-enabled budget-buddy-backup.timer) == enabled ]] || die "the backup timer is not enabled"
+[[ $(ct systemctl is-active budget-buddy-backup.timer) == active ]] || die "the backup timer is not active"
+
+# What the scripts need and the roles don't provide: the database, under the
+# container name and user production has, with the real schema in it.
+lxc file push -q "$here/../sql/schema.sql" "$name/opt/budget-buddy/sql/schema.sql"
+ct chown deploy:deploy /opt/budget-buddy/sql/schema.sql
+ct docker run -d -q --name budget-buddy-db-1 -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=test-only -e POSTGRES_DB=budget postgres:16 >/dev/null
+for _ in $(seq 1 60); do
+  ct docker exec budget-buddy-db-1 pg_isready -q -U admin -d budget && break
+  sleep 2
+done
+ct docker exec budget-buddy-db-1 pg_isready -q -U admin -d budget || die "the stand-in database never came up"
+ct sh -c 'docker exec -i budget-buddy-db-1 psql -q -U admin -d budget < /opt/budget-buddy/sql/schema.sql' >/dev/null 2>&1
+
+ct sh -c 'cat > /tmp/hc.py <<PY
+import http.server
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        open("/tmp/pings", "a").write(self.path + "\n")
+        self.send_response(200); self.end_headers()
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", 8098), H).serve_forever()
+PY
+nohup python3 /tmp/hc.py >/dev/null 2>&1 &'
+sleep 1
+
+ct systemctl start budget-buddy-backup.service \
+  || { ct tail -20 /var/backups/budget-buddy/backup.log || true; die "budget-buddy-backup.service failed"; }
+ct sh -c 'gzip -t /var/backups/budget-buddy/budget-buddy/budget_*.sql.gz' || die "no valid gzipped dump in /var/backups/budget-buddy"
+dump_tables=$(ct sh -c 'gunzip -c /var/backups/budget-buddy/budget-buddy/budget_*.sql.gz')
+grep -q 'CREATE TABLE public.transactions' <<<"$dump_tables" || die "the dump doesn't hold the transactions table"
+archive=$(ct sh -c 'tar tzf /var/backups/budget-buddy/configs/configs_*.tar.gz')
+for want in opt/budget-buddy/.env opt/budget-buddy/docker-compose.yml opt/budget-buddy/sql/schema.sql etc/nginx/sites-available/budget-buddy; do
+  grep -qx "$want" <<<"$archive" || die "the configs tarball is missing $want"
+done
+[[ $(ct cat /tmp/pings | tr '\n' ' ') == '/hc/start /hc ' ]] || die "the pings were not start then success: $(ct cat /tmp/pings)"
+echo "ok: a dump and a configs tarball landed, and healthchecks got start then success"
+
+step "the forced command refuses everything else"
+lxc file push -q --mode 600 "$tmp/backup" "$name/root/backup-key"
+key_ssh=(ssh -T -i /root/backup-key -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR deploy@127.0.0.1)
+dump_over_key=$(ct "${key_ssh[@]}" budget) || die "the backup key couldn't run 'budget': is it bound to the forced command?"
+grep -q 'CREATE TABLE public.transactions' <<<"$dump_over_key" || die "the backup key couldn't run 'budget'; the refusals below would prove nothing"
+for attempt in 'cat /etc/shadow' 'id' 'budget; id' 'budget extra' 'configs /etc/shadow' 'ping/evil' 'BUDGET'; do
+  if out=$(ct "${key_ssh[@]}" "$attempt" 2>&1); then die "the backup key ran '$attempt'"; fi
+  grep -q 'backup-export: refused' <<<"$out" || die "'$attempt' failed without the refusal: $out"
+done
+if out=$(ct "${key_ssh[@]}" 2>&1 </dev/null); then die "the backup key got an interactive login"; fi
+grep -q 'backup-export: refused' <<<"$out" || die "an empty command failed without the refusal: $out"
+echo "ok: 'budget' works; shell commands, extra arguments and an empty command are refused"
+
+[[ $(ct docker ps -q | wc -l) == 1 ]] || die "expected only the stand-in database running"
 ct test ! -e /etc/letsencrypt/accounts || die "an ACME account exists; something asked Let's Encrypt"
 
 echo
 echo "PASS: $name built from nothing, second runs changed=0, unmanaged site and key survived,"
-echo "      app roles refused bad input, and a deploy is not drift"
+echo "      app roles refused bad input, a deploy is not drift, a real backup landed,"
+echo "      and the backup key refused everything else"
 if [[ ${KEEP:-} == 1 ]]; then
   echo "KEEP=1: left $name running; delete it with: lxc delete --force $name"
 fi

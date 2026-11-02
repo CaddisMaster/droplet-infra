@@ -1,0 +1,73 @@
+#!/bin/sh
+# /usr/local/bin/backup-export — the ONLY thing the VM's backup key can run.
+#
+# Installed on the Droplet 2026-08-14, when the nightly backup moved from the Mac
+# into the jupiter VM. The VM is deliberately unable to reach production
+# (Dev Environment Isolation Plan, Phase 2) — this wrapper is the single, narrow
+# exception that lets it pull dumps and do NOTHING else.
+#
+# It is bound to the key via a forced command in ~deploy/.ssh/authorized_keys:
+#
+#   command="/usr/local/bin/backup-export",no-port-forwarding,no-agent-forwarding,\
+#   no-X11-forwarding,no-pty,restrict ssh-ed25519 AAAA... jupiter-backup
+#
+# With a forced command, whatever the client asks for lands in SSH_ORIGINAL_COMMAND
+# and is NOT executed — this script decides. So the allowlist below is the whole
+# security boundary. Keep it exact-match; no globs, no arguments passed through.
+#
+# Runs as `deploy` (docker group, no sudo) — not root. That is enough for
+# `docker exec` and for reading /opt/budget-buddy, and it means a hole here does
+# not yield root.
+
+set -eu
+
+case "${SSH_ORIGINAL_COMMAND:-}" in
+
+  budget)
+    # stdout is the dump; the caller gzips on its own side.
+    exec docker exec budget-buddy-db-1 pg_dump -U admin budget
+    ;;
+
+  configs)
+    # tar strips the leading / and warns on stderr; harmless, and the caller
+    # verifies the archive rather than trusting the exit code.
+    #
+    # ⚠️ This list must stay in step with the one the caller used to send. The
+    # nginx paths are easy to drop when transcribing (they were, once) and their
+    # absence is invisible — the tarball still builds, still passes gzip -t, and
+    # still clears MIN_BYTES. You would only find out while rebuilding a server.
+    # The .env files are included deliberately: they are runtime-only secrets
+    # that nothing else holds.
+    exec tar czf - \
+      /opt/budget-buddy/.env \
+      /opt/budget-buddy/docker-compose.yml \
+      /opt/budget-buddy/sql \
+      /etc/nginx/sites-available \
+      /etc/nginx/sites-enabled
+    ;;
+
+  ping|ping/start|ping/fail)
+    # The healthchecks.io fallback, for networks that block the ping directly
+    # (verified: the work network refuses healthchecks.io outright). Losing it
+    # would silence BOTH the start and failure pings on such a network, leaving
+    # absence as the only signal — the 2026-08-09 shape.
+    #
+    # ⚠️ The URL is NOT passed in. It is read from a file on this host, and the
+    # client can only choose among three fixed suffixes. That is deliberate: a
+    # caller-supplied URL would turn this key into an arbitrary outbound request
+    # from inside production, which is a worse hole than the one it patches.
+    url_file=/etc/backup-export/healthchecks-url
+    [ -r "$url_file" ] || { echo "backup-export: no ping URL configured" >&2; exit 1; }
+    suffix=${SSH_ORIGINAL_COMMAND#ping}
+    exec curl -fsS -m 10 --retry 2 --data-binary @- \
+      "$(tr -d '[:space:]' < "$url_file")${suffix}"
+    ;;
+
+  *)
+    # Anything else — including an empty command, i.e. a plain interactive
+    # `ssh deploy@droplet` — is refused. This is what makes the key useless
+    # for anything but the backup.
+    echo "backup-export: refused (allowed: budget, configs, ping[/start|/fail])" >&2
+    exit 1
+    ;;
+esac
