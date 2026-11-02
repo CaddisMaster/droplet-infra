@@ -6,7 +6,8 @@ can be rebuilt (the 26.04 upgrade is a rebuild, not an in-place upgrade) and che
 | Role | Layer | Issue |
 |---|---|---|
 | `ansible/roles/droplet_host/` | the host: `deploy` user, sshd, ufw, Docker + Compose, Nginx base, Certbot, UTC | #530 |
-| *(next)* | Budget Buddy's app layer, and www's site | #531 |
+| `ansible/roles/budget_buddy_app/` | Budget Buddy: `/opt/budget-buddy`, its Nginx site | #531 |
+| `ansible/roles/www_site/` | `seandesmet.com`'s Nginx site and web root; the page, `landing-deploy` and the headers snippet stay in that repo's `SETUP.md` | #531 |
 
 ⚠️ **`droplet_host`'s path and its `droplet_host_*` variables are an interface.** Orbit Ops
 pins this role by commit SHA (orbit-ops #322) and runs its own app role on top. A rename
@@ -91,6 +92,7 @@ brew install python@3.12   # ansible-core needs 3.12 or newer; the Mac's default
 ../.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
 cp inventory.example.yml inventory.yml   # then fill in the address and the real public keys
 ../.venv/bin/ansible-playbook host.yml --check --diff
+../.venv/bin/ansible-playbook app.yml --check --diff
 cd ~ && rm -rf "$tmp"
 ```
 
