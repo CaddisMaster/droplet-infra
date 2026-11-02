@@ -7,7 +7,7 @@ can be rebuilt (the 26.04 upgrade is a rebuild, not an in-place upgrade) and che
 |---|---|---|
 | `ansible/roles/droplet_host/` | the host: `deploy` user, sshd, ufw, Docker + Compose, Nginx base, Certbot, UTC | #530 |
 | `ansible/roles/budget_buddy_app/` | Budget Buddy: `/opt/budget-buddy`, its Nginx site | #531 |
-| `ansible/roles/budget_buddy_backup/` | The Droplet's backups: both scripts, the units and timer, the VM's pull key. The ping URL is only checked, never written | #532 |
+| `ansible/roles/budget_buddy_backup/` | The Droplet's backups: both scripts, the units and timer, the VM's pull key. The ping URL is only checked, never written. `backup-export` also hands over Orbit Ops's newest dump | #532, #535 |
 | `ansible/roles/www_site/` | `seandesmet.com`'s Nginx site and web root; the page, `landing-deploy` and the headers snippet stay in that repo's `SETUP.md` | #531 |
 
 ⚠️ **`droplet_host`'s path and its `droplet_host_*` variables are an interface.** Orbit Ops

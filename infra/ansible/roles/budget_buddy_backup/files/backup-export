@@ -46,6 +46,16 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
       /etc/nginx/sites-enabled
     ;;
 
+  orbit-ops)
+    # Orbit Ops's newest finished dump (#535). Orbit Ops makes them; this hands one
+    # over, already gzipped, so the VM's pull brings them home along with ours.
+    # The path is fixed and takes no argument. A dump still being written is named
+    # .partial, so the pattern never matches it.
+    newest=$(ls -1t /opt/orbit-ops/backups/*.sql.gz 2>/dev/null | head -n 1)
+    [ -n "$newest" ] || { echo "backup-export: no Orbit Ops dump in /opt/orbit-ops/backups" >&2; exit 1; }
+    exec cat "$newest"
+    ;;
+
   ping|ping/start|ping/fail)
     # The healthchecks.io fallback, for networks that block the ping directly
     # (verified: the work network refuses healthchecks.io outright). Losing it
@@ -67,7 +77,7 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     # Anything else — including an empty command, i.e. a plain interactive
     # `ssh deploy@droplet` — is refused. This is what makes the key useless
     # for anything but the backup.
-    echo "backup-export: refused (allowed: budget, configs, ping[/start|/fail])" >&2
+    echo "backup-export: refused (allowed: budget, configs, orbit-ops, ping[/start|/fail])" >&2
     exit 1
     ;;
 esac

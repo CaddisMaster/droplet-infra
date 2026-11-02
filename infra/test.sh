@@ -3,6 +3,7 @@
 #   host role (#530): launch -> run -> plant unmanaged things -> run again (changed=0) -> verify
 #   app roles (#531, #532): refusals -> run -> run again (changed=0) -> a deploy is not drift
 #     -> verify -> a real backup into a real Postgres container -> the backup key's refusals
+#     -> Orbit Ops's dumps through that key (#535)
 #   then delete
 #
 #   infra/test.sh            # keeps nothing
@@ -325,13 +326,31 @@ if out=$(ct "${key_ssh[@]}" 2>&1 </dev/null); then die "the backup key got an in
 grep -q 'backup-export: refused' <<<"$out" || die "an empty command failed without the refusal: $out"
 echo "ok: 'budget' works; shell commands, extra arguments and an empty command are refused"
 
+step "Orbit Ops's dumps go through the backup key (#535)"
+ct sh -c 'install -d -o deploy -g deploy -m 750 /opt/orbit-ops && install -d -o deploy -g deploy -m 700 /opt/orbit-ops/backups'
+if out=$(ct "${key_ssh[@]}" orbit-ops 2>&1); then die "orbit-ops succeeded with no dump"; fi
+grep -q 'no Orbit Ops dump' <<<"$out" || die "no dump failed without naming it: $out"
+dump_over_key=$(ct "${key_ssh[@]}" budget) || die "with no Orbit Ops dump, 'budget' stopped working"
+grep -q 'CREATE TABLE public.transactions' <<<"$dump_over_key" || die "with no Orbit Ops dump, 'budget' returned no dump"
+ct sudo -u deploy sh -c 'cd /opt/orbit-ops/backups &&
+  echo older | gzip > nightly-20260101-000000.sql.gz && sleep 1.1 &&
+  echo newest | gzip > nightly-20260102-000000.sql.gz && sleep 1.1 &&
+  echo partial | gzip > nightly-20260103-000000.sql.gz.partial'
+got=$(ct sh -c "$(printf '%q ' "${key_ssh[@]}") orbit-ops | gunzip -c")
+[[ $got == newest ]] || die "orbit-ops returned '$got', not the newest finished dump"
+for attempt in 'orbit-ops /etc/shadow' 'orbit-ops ../../etc/shadow' 'orbit-ops; id' 'ORBIT-OPS'; do
+  if out=$(ct "${key_ssh[@]}" "$attempt" 2>&1); then die "the backup key ran '$attempt'"; fi
+  grep -q 'backup-export: refused' <<<"$out" || die "'$attempt' failed without the refusal: $out"
+done
+echo "ok: named error with no dump, newest finished dump served, and no argument accepted"
+
 [[ $(ct docker ps -q | wc -l) == 1 ]] || die "expected only the stand-in database running"
 ct test ! -e /etc/letsencrypt/accounts || die "an ACME account exists; something asked Let's Encrypt"
 
 echo
 echo "PASS: $name built from nothing, second runs changed=0, unmanaged site and key survived,"
 echo "      app roles refused bad input, a deploy is not drift, a real backup landed,"
-echo "      and the backup key refused everything else"
+echo "      the backup key refused everything else, and Orbit Ops's newest dump went through it"
 if [[ ${KEEP:-} == 1 ]]; then
   echo "KEEP=1: left $name running; delete it with: lxc delete --force $name"
 fi
