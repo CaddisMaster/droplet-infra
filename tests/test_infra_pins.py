@@ -120,6 +120,65 @@ def test_the_production_check_names_a_python_ansible_core_can_run_on():
     assert "--no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check" in readme
 
 
+# --- Terraform (#533) ---------------------------------------------------------
+
+TERRAFORM = INFRA / "terraform"
+_RESOURCE = re.compile(r'^resource\s+"(?P<type>[a-z_]+)"', re.M)
+_TF_VERSION = re.compile(r'required_version\s*=\s*"= (?P<v>\d+\.\d+\.\d+)"')
+_PROVIDER_VERSION = re.compile(r'^\s+version\s*=\s*"= (?P<v>\d+\.\d+\.\d+)"', re.M)
+
+
+def terraform_resources(text):
+    return _RESOURCE.findall(text)
+
+
+def has_prevent_destroy(text):
+    return re.search(r"^\s*prevent_destroy\s*=\s*true\s*$", text, re.M) is not None
+
+
+def test_terraform_and_its_provider_are_pinned_exactly():
+    main = (TERRAFORM / "main.tf").read_text()
+    assert _TF_VERSION.search(main)
+    pinned = _PROVIDER_VERSION.search(main).group("v")
+    lock = (TERRAFORM / ".terraform.lock.hcl").read_text()
+    assert f'version     = "{pinned}"' in lock
+
+
+def test_the_lock_file_covers_the_mac_and_the_vm():
+    # Hashes for one platform only would make init rewrite the lock on the other.
+    lock = (TERRAFORM / ".terraform.lock.hcl").read_text()
+    assert lock.count('"h1:') >= 2
+
+
+@pytest.mark.criterion(533, "The droplet cannot be destroyed by accident")
+def test_the_droplet_cannot_be_destroyed_by_accident():
+    assert has_prevent_destroy((TERRAFORM / "main.tf").read_text())
+
+
+def test_terraform_holds_the_droplet_and_nothing_else():
+    # DNS is at Squarespace, so a domain resource here would create a second copy.
+    assert terraform_resources((TERRAFORM / "main.tf").read_text()) == ["digitalocean_droplet"]
+
+
+@pytest.mark.criterion(533, "Nothing private is committable")
+def test_nothing_private_is_committable():
+    gitignore = (REPO_ROOT / ".gitignore").read_text().splitlines()
+    assert {"*.tfstate", "*.tfstate.*", "*.tfvars", ".terraform/"} <= set(gitignore)
+    assert ".terraform.lock.hcl" not in gitignore
+
+
+def test_the_droplet_address_and_token_are_not_in_the_config():
+    main = (TERRAFORM / "main.tf").read_text()
+    assert not re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", main)
+    assert "dop_v1_" not in main
+    assert not re.search(r"^\s*token\s*=", main, re.M)
+
+
+def test_dependabot_covers_the_provider():
+    config = (REPO_ROOT / ".github/dependabot.yml").read_text()
+    assert 'package-ecosystem: terraform\n    directory: "/infra/terraform"' in config
+
+
 # --- the detectors themselves can fail ---------------------------------------
 
 @pytest.mark.parametrize("line", ["ansible-core>=2.21", "ansible-core", "ansible-core~=2.21.0"])
@@ -144,3 +203,14 @@ def test_a_collection_without_an_exact_version_is_caught():
         '    version: ">=2.0.0"\n'
     )
     assert collection_versions(text) == {"community.general": None, "ansible.posix": ">=2.0.0"}
+
+
+def test_a_second_resource_is_noticed():
+    text = 'resource "digitalocean_droplet" "a" {}\nresource "digitalocean_domain" "b" {}\n'
+    assert terraform_resources(text) == ["digitalocean_droplet", "digitalocean_domain"]
+
+
+def test_a_commented_out_prevent_destroy_is_not_a_guard():
+    assert not has_prevent_destroy("  # prevent_destroy = true\n")
+    assert not has_prevent_destroy("  prevent_destroy = false\n")
+    assert has_prevent_destroy("    prevent_destroy = true\n")

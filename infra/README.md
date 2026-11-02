@@ -10,6 +10,9 @@ can be rebuilt (the 26.04 upgrade is a rebuild, not an in-place upgrade) and che
 | `ansible/roles/budget_buddy_backup/` | The Droplet's backups: both scripts, the units and timer, the VM's pull key. The ping URL is only checked, never written. `backup-export` also hands over Orbit Ops's newest dump | #532, #535 |
 | `ansible/roles/www_site/` | `seandesmet.com`'s Nginx site and web root; the page, `landing-deploy` and the headers snippet stay in that repo's `SETUP.md` | #531 |
 
+`terraform/` holds the Droplet itself, imported (#533). It doesn't hold DNS, which stays at
+Squarespace by hand.
+
 ⚠️ **`droplet_host`'s path and its `droplet_host_*` variables are an interface.** Orbit Ops
 pins this role by commit SHA (orbit-ops #322) and runs its own app role on top. A rename
 needs a pin bump there, so a PR that renames one says so.
@@ -99,3 +102,34 @@ cd ~ && rm -rf "$tmp"
 
 Every difference it reports gets one of two outcomes: **fix the role**, or **record it in
 RUNBOOK as deliberate** (RUNBOOK §8, "Where the host role and production differ"). Production is never changed to match the role.
+
+## Terraform
+
+`terraform/main.tf` describes the Droplet so that `plan` can compare it with what exists. **Nothing
+here runs `apply`.** Any plan that says the Droplet must be replaced is a stop, and
+`prevent_destroy` makes that plan fail.
+
+- **Mac only.** The token is a DigitalOcean **Read Only** token kept in Bitwarden, never on the VM
+  or GitHub.
+- **State lives in `~/.budget-buddy-terraform/`** on the Mac, outside the throwaway clone. That Mac
+  has no backup, and that's accepted: losing the file means running `import` again.
+- **DNS isn't here.** `seandesmet.com`'s nameservers are Squarespace's, and no Terraform provider
+  for them turned up. Moving DNS to DigitalOcean would be its own issue.
+
+```bash
+SHA=<the reviewed commit on main>
+tmp=$(mktemp -d) && git -C "$tmp" init -q \
+  && git -C "$tmp" fetch -q --depth 1 https://github.com/CaddisMaster/budget-buddy.git "$SHA" \
+  && git -C "$tmp" checkout -q FETCH_HEAD && cd "$tmp/infra/terraform"
+curl -fsSO https://releases.hashicorp.com/terraform/1.17.1/terraform_1.17.1_darwin_arm64.zip
+echo "b1ecb3fe0d0a0290c1ab6f83d967d43f25da05d0b671ee0fb355252268dce95a  terraform_1.17.1_darwin_arm64.zip" \
+  | shasum -a 256 -c && unzip -q terraform_1.17.1_darwin_arm64.zip -d ../.tf-bin
+read -rs "T?DigitalOcean Read Only token: "; echo; export DIGITALOCEAN_TOKEN="$T"; unset T
+mkdir -p -m 700 ~/.budget-buddy-terraform
+../.tf-bin/terraform init -backend-config="path=$HOME/.budget-buddy-terraform/terraform.tfstate"
+../.tf-bin/terraform plan
+unset DIGITALOCEAN_TOKEN; cd ~ && rm -rf "$tmp"
+```
+
+On a lost state file, run `terraform import digitalocean_droplet.main <droplet id>` before the
+plan. The API's `/v2/droplets` gives the ID.
