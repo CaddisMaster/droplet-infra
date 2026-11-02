@@ -80,7 +80,9 @@ oneshot systemd unit ordered `After=docker.service` belongs in `personal-vault/i
 
 ## Checking production
 
-Check mode only, never a real run (#530's scope). This runs from a **Mac terminal**: the VM
+**Check mode first, always.** A real run is a separate decision for Sean, on a diff he has read.
+`app.yml` has run for real once (2026-11-02, #535: `backup-export` only). `host.yml` never has.
+This runs from a **Mac terminal**: the VM
 can't reach production (since 2026-11-01). The Mac keeps **no clone** of this repo, and Sean's
 decision on #530 (2026-10-29) was **a throwaway clone pinned to the reviewed commit, deleted
 afterwards.**
@@ -101,7 +103,7 @@ cd ~ && rm -rf "$tmp"
 ```
 
 Every difference it reports gets one of two outcomes: **fix the role**, or **record it in
-RUNBOOK as deliberate** (RUNBOOK §8, "Where the host role and production differ"). Production is never changed to match the role.
+RUNBOOK as deliberate** (RUNBOOK §8, "Where the host role and production differ"). Production is never changed just to match a role.
 
 ## Terraform
 
