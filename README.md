@@ -111,14 +111,21 @@ SHA=<the reviewed commit on main>
 tmp=$(mktemp -d) && git -C "$tmp" init -q \
   && git -C "$tmp" fetch -q --depth 1 https://github.com/CaddisMaster/droplet-infra.git "$SHA" \
   && git -C "$tmp" checkout -q FETCH_HEAD && cd "$tmp/infra/ansible"
-brew install python@3.12   # ansible-core needs 3.12 or newer; the Mac's default python3 is older
+brew install python@3.12
 "$(brew --prefix python@3.12)/bin/python3.12" -m venv ../.venv \
   && ../.venv/bin/pip install -q --no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check
 ../.venv/bin/ansible-galaxy collection install -r requirements.yml -p ./collections
-cp inventory.example.yml inventory.yml   # then fill in the address and the real public keys
+cp inventory.example.yml inventory.yml
+nano inventory.yml
 ../.venv/bin/ansible-playbook host.yml --check --diff
 cd ~ && rm -rf "$tmp"
 ```
+
+Run these one at a time: `nano` is where you fill in the address and the real `deploy` key, and
+`#` isn't a comment in an interactive zsh, so these boxes hold none. ansible-core needs Python 3.12
+or newer, and the Mac's default `python3` is older. **The key's options must match the Droplet's line
+exactly**, or check mode reports a false difference. Read it from the Mac:
+`ssh root@<droplet> "grep github-actions /home/deploy/.ssh/authorized_keys"`.
 
 Every difference it reports gets one of two outcomes: **fix the role**, or **record it below as
 deliberate**. Production is never changed just to match a role.
@@ -160,6 +167,8 @@ mkdir -p -m 700 ~/.budget-buddy-terraform
 ../.tf-bin/terraform plan
 unset DIGITALOCEAN_TOKEN; cd ~ && rm -rf "$tmp"
 ```
+
+Run the `read` line on its own, because it takes the next line of a paste as the token.
 
 On a lost state file, run `terraform import digitalocean_droplet.main <droplet id>` before the
 plan. The API's `/v2/droplets` gives the ID.
