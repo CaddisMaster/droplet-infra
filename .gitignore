@@ -1,0 +1,22 @@
+# This repository is public. The real inventory holds the Droplet's address and
+# inventory.example.yml is the tracked template. The venv and the installed
+# collections are rebuilt from the pins by infra/test.sh.
+infra/ansible/inventory.yml
+infra/ansible/collections/
+infra/.venv/
+
+# Terraform: the state holds the Droplet's address, and it lives on the Mac anyway.
+# .terraform.lock.hcl is tracked on purpose.
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.tf-bin/
+
+.env
+.env.*
+
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/

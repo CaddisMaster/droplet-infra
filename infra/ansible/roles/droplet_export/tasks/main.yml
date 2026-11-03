@@ -1,0 +1,18 @@
+# The one narrow way off the Droplet for the VM's nightly pull. The script names
+# each tenant's database or dump folder, on purpose: the server knows its tenants.
+# Each app's own dump job and timer stay in that app's repo.
+
+- name: The export script
+  ansible.builtin.copy:
+    src: backup-export
+    dest: /usr/local/bin/backup-export
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: The VM's pull key, bound to its forced command
+  ansible.posix.authorized_key:
+    user: "{{ droplet_export_user }}"
+    key: "{{ droplet_export_key }}"
+    key_options: "{{ droplet_export_key_options }}"
+    exclusive: false

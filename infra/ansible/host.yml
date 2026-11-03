@@ -1,7 +1,9 @@
-# The shared Droplet's host layer (#530): no app in it. Budget Buddy's app role
-# (#531) and Orbit Ops's (orbit-ops #322) run on top of this.
-- name: The Droplet's host layer
+# The shared Droplet's server layer: no app in it. Each app's own playbook, in its
+# own repo, runs on top of this. Apps pin this repo for testing only, and never run
+# this playbook on production.
+- name: The Droplet's server layer
   hosts: droplet
   become: true
   roles:
     - droplet_host
+    - droplet_export

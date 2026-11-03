@@ -1,16 +1,13 @@
-"""#530 — the Ansible control node is pinned exactly, and in one place.
+"""The Ansible control node is pinned exactly, and in one place.
 
 `infra/requirements-infra.txt` pins ansible-core and `infra/ansible/requirements.yml`
-pins the collections. Orbit Ops pins this repo's host role by commit SHA
-(orbit-ops #322), so a floating version here would make that SHA mean different
-things on different days.
+pins the collections. Both tenants pin this repo's host role by commit SHA, so a
+floating version here would make that SHA mean different things on different days.
 
-The same "one pin only" rule ruff follows (tests/test_lint_local.py): a second
-ansible-core pin anywhere in the repo is a second answer to "which version?".
-
-`infra/` is excluded from the image, so these skip there.
+A second ansible-core pin anywhere in the repo is a second answer to "which version?".
 """
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -19,9 +16,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INFRA = REPO_ROOT / "infra"
 REQS = INFRA / "requirements-infra.txt"
 COLLECTIONS = INFRA / "ansible/requirements.yml"
-_NOT_IN_IMAGE = "not present in the shipped image — .dockerignore excludes infra/"
-
-pytestmark = pytest.mark.skipif(not INFRA.exists(), reason=_NOT_IN_IMAGE)
 
 _EXACT = re.compile(r"^[A-Za-z0-9_.-]+==[0-9][0-9A-Za-z.]*$")
 # A collection entry's version: exactly X.Y.Z, quoted or not. Anchored to the
@@ -94,7 +88,6 @@ def _pip_entry_directories(text):
     ]
 
 
-@pytest.mark.criterion(553, "The control node installs only pinned packages")
 def test_the_control_node_installs_only_pinned_packages():
     # ansible-core's own requirements, so they cannot float underneath it.
     assert {"jinja2", "pyyaml", "cryptography", "packaging", "resolvelib"} <= _names(REQS.read_text())
@@ -106,15 +99,14 @@ def test_the_control_node_installs_only_pinned_packages():
     assert "-m venv --clear" in script
 
 
-@pytest.mark.criterion(553, "Dependabot proposes bumps for the control node")
 def test_dependabot_proposes_bumps_for_the_control_node():
     config = (REPO_ROOT / ".github/dependabot.yml").read_text()
     assert "/infra" in _pip_entry_directories(config)
 
 
 def test_the_production_check_names_a_python_ansible_core_can_run_on():
-    # #567: the Mac's default python3 is too old for ansible-core 2.21.
-    readme = (INFRA / "README.md").read_text()
+    # The Mac's default python3 is too old for ansible-core 2.21.
+    readme = (REPO_ROOT / "README.md").read_text()
     assert "python3 -m venv" not in readme
     assert "python3.12\" -m venv" in readme
     assert "--no-deps -r ../requirements-infra.txt && ../.venv/bin/pip check" in readme
@@ -150,7 +142,6 @@ def test_the_lock_file_covers_the_mac_and_the_vm():
     assert lock.count('"h1:') >= 2
 
 
-@pytest.mark.criterion(533, "The droplet cannot be destroyed by accident")
 def test_the_droplet_cannot_be_destroyed_by_accident():
     assert has_prevent_destroy((TERRAFORM / "main.tf").read_text())
 
@@ -160,11 +151,25 @@ def test_terraform_holds_the_droplet_and_nothing_else():
     assert terraform_resources((TERRAFORM / "main.tf").read_text()) == ["digitalocean_droplet"]
 
 
-@pytest.mark.criterion(533, "Nothing private is committable")
-def test_nothing_private_is_committable():
-    gitignore = (REPO_ROOT / ".gitignore").read_text().splitlines()
-    assert {"*.tfstate", "*.tfstate.*", "*.tfvars", ".terraform/"} <= set(gitignore)
-    assert ".terraform.lock.hcl" not in gitignore
+@pytest.mark.parametrize("path", [
+    "infra/terraform/terraform.tfstate",
+    "infra/terraform/terraform.tfstate.backup",
+    "infra/terraform/.terraform/providers/x",
+    "infra/terraform/secrets.tfvars",
+    "infra/ansible/inventory.yml",
+    ".env",
+    "infra/.env.local",
+])
+def test_nothing_private_is_committable(path):
+    """Asks git rather than reading .gitignore, so a negation further down can't lie."""
+    result = subprocess.run(["git", "check-ignore", "-q", "--no-index", path], cwd=REPO_ROOT)
+    assert result.returncode == 0, f"{path} could be committed"
+
+
+@pytest.mark.parametrize("path", ["infra/terraform/.terraform.lock.hcl", "infra/ansible/inventory.example.yml"])
+def test_what_must_be_tracked_is_not_ignored(path):
+    result = subprocess.run(["git", "check-ignore", "-q", "--no-index", path], cwd=REPO_ROOT)
+    assert result.returncode == 1, f"{path} is ignored"
 
 
 def test_the_droplet_address_and_token_are_not_in_the_config():

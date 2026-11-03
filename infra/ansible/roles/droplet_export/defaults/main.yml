@@ -1,0 +1,13 @@
+# What the VM's backup pull is allowed to do. Values are production's, read on
+# 2026-11-02. files/backup-export is production's byte for byte.
+droplet_export_user: deploy
+
+# The VM's pull key. Only the public half is here, bound to the forced command,
+# which is the whole of what the key can do. The options must match the Droplet's
+# line exactly, in this order, or check mode reports a change. Managed
+# non-exclusively: every other line in the file is left as it is.
+droplet_export_key: >-
+  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINQG70U/S+9uqDbKNc6CQ7D+ymZ0RVD4884fTDUutbrb
+  jupiter-backup
+droplet_export_key_options: >-
+  command="/usr/local/bin/backup-export",restrict,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty
