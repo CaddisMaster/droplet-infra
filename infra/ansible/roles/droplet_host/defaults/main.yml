@@ -17,3 +17,10 @@ droplet_host_timezone: Etc/UTC
 # The packaged `default` site is disabled on production (only the app sites are
 # enabled). This is the one Nginx site the role removes, and only by this name.
 droplet_host_nginx_disable_default: true
+
+# The oldest Nginx package the role accepts (#9). The packages task installs with
+# `state: present`, which never upgrades, so a security fix needs this floor: a
+# host below it is upgraded on the next run, and one at or above it is left
+# alone. Raise it when a USN for noble's nginx lands.
+# 1.24.0-2ubuntu7.20: USN-9159-1 (2026-11-19), CVE-2026-118899 and the HTTP/2 pair.
+droplet_host_nginx_min_version: 1.24.0-2ubuntu7.20
