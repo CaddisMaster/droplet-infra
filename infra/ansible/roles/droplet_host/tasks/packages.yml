@@ -37,6 +37,35 @@
     # A new repository must be read now, not within the hour.
     cache_valid_time: "{{ 0 if droplet_host_docker_repo is changed else 3600 }}"
 
+# #9: the floor under Nginx. dpkg compares Debian versions; nothing else here does
+# it correctly ("7.20" vs "7.3"). Read-only, so it runs in check mode too.
+- name: Is Nginx below the patched version?
+  ansible.builtin.shell: >-
+    dpkg --compare-versions
+    "$(dpkg-query -W -f='${Version}' nginx)" lt {{ droplet_host_nginx_min_version | quote }}
+  register: droplet_host_nginx_old
+  changed_when: false
+  failed_when: droplet_host_nginx_old.rc not in [0, 1]
+  check_mode: false
+
+# The package's own scripts restart Nginx; every tenant's site comes back with it.
+- name: Nginx is upgraded to the patched version
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - nginx-common
+    state: latest
+    only_upgrade: true
+    update_cache: true
+  when: droplet_host_nginx_old.rc == 0
+
+- name: Nginx is at least the patched version
+  ansible.builtin.shell: >-
+    dpkg --compare-versions
+    "$(dpkg-query -W -f='${Version}' nginx)" ge {{ droplet_host_nginx_min_version | quote }}
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Docker runs and starts at boot
   ansible.builtin.service:
     name: docker

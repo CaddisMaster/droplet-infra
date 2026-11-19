@@ -86,9 +86,24 @@ droplet:
     droplet_export_key: "$(cat "$tmp/backup.pub")"
 EOF
 
+# --- an unpatched Nginx, as production had before #9 ----------------------------
+step "start from noble's original, unpatched Nginx"
+lxc exec "$name" -- sh -c 'apt-get update -qq && apt-cache madison nginx' > "$tmp/madison"
+oldest=$(awk '{print $3}' "$tmp/madison" | tail -1)
+[[ -n $oldest ]] || die "apt has no nginx versions"
+lxc exec "$name" -- dpkg --compare-versions "$oldest" lt 1.24.0-2ubuntu7.20 \
+  || die "the archive's oldest nginx ($oldest) is already patched; the upgrade path can't be tested"
+lxc exec "$name" -- env DEBIAN_FRONTEND=noninteractive apt-get install -qq -y \
+  "nginx=$oldest" "nginx-common=$oldest" >/dev/null
+echo "ok: nginx $oldest installed"
+
 # --- first run ---------------------------------------------------------------
 step "first run"
 ansible-playbook -i "$tmp/inventory.yml" host.yml
+nginx_now=$(lxc exec "$name" -- dpkg-query -W -f='${Version}' nginx)
+lxc exec "$name" -- dpkg --compare-versions "$nginx_now" ge 1.24.0-2ubuntu7.20 \
+  || die "the first run left nginx at $nginx_now, below the floor"
+echo "ok: the first run upgraded nginx $oldest -> $nginx_now"
 
 # --- plant what the role did not create --------------------------------------
 step "plant an unmanaged Nginx site and an unmanaged key"
@@ -132,6 +147,9 @@ ct nginx -t
 ct test -f /etc/nginx/sites-available/di-unmanaged || die "the unmanaged site file was removed"
 ct test -L /etc/nginx/sites-enabled/di-unmanaged || die "the unmanaged sites-enabled link was removed"
 ct test ! -e /etc/nginx/sites-enabled/default || die "the packaged default site is still enabled"
+# #9: HTTP/2 stays off. 1.24.0's HTTP/2 RCEs are fixed in the floor above, but
+# turning it on is a decision for its own PR, not a side effect of this role.
+! ct nginx -T 2>/dev/null | grep -qwE 'http2' || die "http2 appears in the rendered Nginx config"
 
 ct grep -qxF "$unmanaged_line" /home/deploy/.ssh/authorized_keys || die "the unmanaged key line changed or vanished"
 ct grep -qF "$(cut -d' ' -f2 "$tmp/declared.pub")" /home/deploy/.ssh/authorized_keys || die "the declared key is missing"

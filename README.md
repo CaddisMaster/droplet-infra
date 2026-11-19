@@ -104,7 +104,10 @@ oneshot systemd unit ordered `After=docker.service` belongs in `personal-vault/i
 ## Checking production
 
 **Check mode first, always.** A real run is a separate decision for Sean, on a diff he has read.
-`host.yml` has never run for real. This runs from a **Mac terminal**: the VM can't reach production
+`host.yml` first ran for real on 2026-11-19 (at `1bbc95d`, from the Mac): `ok=22 changed=3`
+(backup-export, the SSH drop-in, the sshd reload), then a re-check at `changed=0`. A real run
+applies the same way, with `--check --diff` dropped, after Sean has read the check's diff. This
+runs from a **Mac terminal**: the VM can't reach production
 (since 2026-11-01). The Mac keeps **no clone** of this repo, and the decision on Budget Buddy's #530
 (2026-10-29) was **a throwaway clone pinned to the reviewed commit, deleted afterwards.**
 
@@ -134,12 +137,14 @@ deliberate**. Production is never changed just to match a role.
 
 ### Where the host role and production differ, deliberately
 
-- **The role's SSH drop-in (`Keys only, never a password`).** Production's SSH settings
-  predate the role, and its first real run adds the role's own file under
-  `/etc/ssh/sshd_config.d/`. That file restricts root to key logins. Password and
-  keyboard-interactive logins are already off on production, so **nobody's access
-  changes**: every login that works today is a key login, and still works. Check mode
-  reports this task as `changed`, and that's expected. Checked 2026-10-30.
+None at the moment. Record one here, with its date, when a check reports a difference that should
+stay.
+
+- *Resolved 2026-11-19:* **the role's SSH drop-in (`Keys only, never a password`).** Production's
+  SSH settings predated the role. The first real run added `10-droplet-host.conf` under
+  `/etc/ssh/sshd_config.d/`, which took root from `PermitRootLogin yes` to `prohibit-password`.
+  Password logins were already off, so nobody's access changed, and a fresh root key login was
+  checked afterwards.
 
 ## Terraform
 
