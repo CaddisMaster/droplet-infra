@@ -195,6 +195,24 @@ for attempt in 'orbit-ops /etc/shadow' 'orbit-ops ../../etc/shadow' 'orbit-ops; 
 done
 echo "ok: named error with no dump, newest finished dump served, and no argument accepted"
 
+step "Job Hunt's dumps go through the backup key (#10)"
+ct sh -c 'install -d -o deploy -g deploy -m 750 /opt/apply && install -d -o deploy -g deploy -m 700 /opt/apply/backups'
+if out=$(ct "${key_ssh[@]}" job-hunt 2>&1); then die "job-hunt succeeded with no dump"; fi
+grep -q 'no Job Hunt dump' <<<"$out" || die "no dump failed without naming it: $out"
+ct sudo -u deploy sh -c 'cd /opt/apply/backups &&
+  echo older | gzip > nightly-20260101-000000.sql.gz && sleep 1.1 &&
+  echo newest | gzip > pre-deploy-20260102-000000.sql.gz && sleep 1.1 &&
+  echo partial | gzip > nightly-20260103-000000.sql.gz.partial'
+got=$(ct sh -c "$(printf '%q ' "${key_ssh[@]}") job-hunt | gunzip -c")
+[[ $got == newest ]] || die "job-hunt returned '$got', not the newest finished dump"
+got=$(ct sh -c "$(printf '%q ' "${key_ssh[@]}") orbit-ops | gunzip -c")
+[[ $got == newest ]] || die "with Job Hunt's dumps there, orbit-ops returned '$got'"
+for attempt in 'job-hunt /etc/shadow' 'job-hunt ../../etc/shadow' 'job-hunt; id' 'JOB-HUNT' 'apply'; do
+  if out=$(ct "${key_ssh[@]}" "$attempt" 2>&1); then die "the backup key ran '$attempt'"; fi
+  grep -q 'backup-export: refused' <<<"$out" || die "'$attempt' failed without the refusal: $out"
+done
+echo "ok: named error with no dump, newest finished dump served, and no argument accepted"
+
 [[ $(ct docker ps -q | wc -l) == 1 ]] || die "expected only the stand-in database running"
 ct test ! -e /etc/letsencrypt/accounts || die "an ACME account exists; something asked Let's Encrypt"
 

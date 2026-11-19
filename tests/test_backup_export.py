@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 
 ROLE = Path(__file__).resolve().parent.parent / "infra/ansible/roles/droplet_export"
-ORBIT_DIR = "/opt/orbit-ops/backups"
+DIRS = {"orbit-ops": "/opt/orbit-ops/backups", "job-hunt": "/opt/apply/backups"}
+NAMES = {"orbit-ops": b"no Orbit Ops dump", "job-hunt": b"no Job Hunt dump"}
 
 
 def test_the_forced_command_is_bound_to_the_pull_key():
@@ -28,18 +29,22 @@ def test_the_key_is_never_managed_exclusively():
 
 @pytest.fixture
 def export(tmp_path):
-    backups = tmp_path / "backups"
-    backups.mkdir()
+    """The real script with each tenant's dump folder moved under tmp_path."""
     script = tmp_path / "backup-export"
     text = (ROLE / "files/backup-export").read_text()
-    assert ORBIT_DIR in text
-    script.write_text(text.replace(ORBIT_DIR, str(backups)))
+    run_dirs = {}
+    for tenant, path in DIRS.items():
+        assert text.count(path) == 2, tenant  # the glob and the error message
+        run_dirs[tenant] = tmp_path / tenant
+        run_dirs[tenant].mkdir()
+        text = text.replace(path, str(run_dirs[tenant]))
+    script.write_text(text)
 
     def run(command):
         env = {"PATH": os.environ["PATH"], "SSH_ORIGINAL_COMMAND": command}
         return subprocess.run(["sh", str(script)], env=env, capture_output=True, stdin=subprocess.DEVNULL)
 
-    run.backups = backups
+    run.dirs = run_dirs
     return run
 
 
@@ -50,20 +55,29 @@ def _dump(directory, name, body, age):
     os.utime(path, (stamp, stamp))
 
 
-def test_no_dump_is_a_named_error(export):
-    result = export("orbit-ops")
+@pytest.mark.parametrize("tenant", DIRS)
+def test_no_dump_is_a_named_error(export, tenant):
+    result = export(tenant)
     assert result.returncode == 1
     assert result.stdout == b""
-    assert b"no Orbit Ops dump" in result.stderr
+    assert NAMES[tenant] in result.stderr
 
 
-def test_it_serves_the_newest_finished_dump(export):
-    _dump(export.backups, "pre-deploy-1.sql.gz", b"older", age=200)
-    _dump(export.backups, "nightly-2.sql.gz", b"newest", age=100)
-    _dump(export.backups, "nightly-3.sql.gz.partial", b"unfinished", age=0)
-    result = export("orbit-ops")
+@pytest.mark.parametrize("tenant", DIRS)
+def test_it_serves_the_newest_finished_dump(export, tenant):
+    _dump(export.dirs[tenant], "pre-deploy-1.sql.gz", b"older", age=200)
+    _dump(export.dirs[tenant], "nightly-2.sql.gz", b"newest", age=100)
+    _dump(export.dirs[tenant], "nightly-3.sql.gz.partial", b"unfinished", age=0)
+    result = export(tenant)
     assert result.returncode == 0, result.stderr
     assert gzip.decompress(result.stdout) == b"newest"
+
+
+def test_each_tenant_gets_only_its_own_dump(export):
+    _dump(export.dirs["orbit-ops"], "nightly-1.sql.gz", b"orbit", age=0)
+    _dump(export.dirs["job-hunt"], "nightly-1.sql.gz", b"apply", age=50)
+    assert gzip.decompress(export("orbit-ops").stdout) == b"orbit"
+    assert gzip.decompress(export("job-hunt").stdout) == b"apply"
 
 
 @pytest.mark.parametrize("command", [
@@ -71,11 +85,16 @@ def test_it_serves_the_newest_finished_dump(export):
     "orbit-ops ../../etc/shadow",
     "orbit-ops; id",
     "ORBIT-OPS",
+    "job-hunt /etc/shadow",
+    "job-hunt; id",
+    "JOB-HUNT",
+    "apply",
     "cat /etc/shadow",
     "",
 ])
 def test_nothing_but_the_exact_command_is_served(export, command):
-    _dump(export.backups, "nightly-1.sql.gz", b"a dump", age=0)
+    for directory in export.dirs.values():
+        _dump(directory, "nightly-1.sql.gz", b"a dump", age=0)
     result = export(command)
     assert result.returncode == 1
     assert result.stdout == b""
