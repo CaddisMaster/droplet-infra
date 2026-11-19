@@ -14,6 +14,7 @@ tenants, and each keeps its own layer in its own repo.
 |---|---|
 | [`budget-buddy`](https://github.com/CaddisMaster/budget-buddy) | `/opt/budget-buddy`, its Nginx site, its dump script and timer, its release workflow |
 | [`orbit-ops`](https://github.com/CaddisMaster/orbit-ops) | `/opt/orbit-ops`, its Nginx site, its dumps |
+| [`job-hunt`](https://github.com/CaddisMaster/job-hunt) | `/opt/apply`, its Nginx site, its dumps |
 | [`seandesmet.com`](https://github.com/CaddisMaster/seandesmet.com) | the landing page and its Nginx site |
 
 **Issue numbers:** this repo was split out of Budget Buddy with its history. In commit messages
@@ -38,7 +39,8 @@ What the host role will **never** do, because the box is shared:
 - **Write `.env` or `docker-compose.yml`.** Each app's release workflow owns its own.
 
 `backup-export` names each app's database or dump folder. That's accepted: the server knows its
-tenants. Its contract for Orbit Ops is that finished dumps are `*.sql.gz` in `/opt/orbit-ops/backups`.
+tenants. Its contract for Orbit Ops and Job Hunt is that finished dumps are `*.sql.gz` in
+`/opt/orbit-ops/backups` and `/opt/apply/backups`.
 A new `backup-export` command is a change here, made together with the app that needs it.
 
 ## Testing in LXD (on the `jupiter` VM)

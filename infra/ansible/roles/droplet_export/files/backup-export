@@ -56,6 +56,15 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     exec cat "$newest"
     ;;
 
+  job-hunt)
+    # Job Hunt's newest finished dump (droplet-infra #10), the same contract as
+    # Orbit Ops's: finished dumps are *.sql.gz in its backups folder, and one being
+    # written is named .partial. From Job Hunt 0.2 these hold other people's resumes.
+    newest=$(ls -1t /opt/apply/backups/*.sql.gz 2>/dev/null | head -n 1)
+    [ -n "$newest" ] || { echo "backup-export: no Job Hunt dump in /opt/apply/backups" >&2; exit 1; }
+    exec cat "$newest"
+    ;;
+
   ping|ping/start|ping/fail)
     # The healthchecks.io fallback, for networks that block the ping directly
     # (verified: the work network refuses healthchecks.io outright). Losing it
@@ -77,7 +86,7 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     # Anything else — including an empty command, i.e. a plain interactive
     # `ssh deploy@droplet` — is refused. This is what makes the key useless
     # for anything but the backup.
-    echo "backup-export: refused (allowed: budget, configs, orbit-ops, ping[/start|/fail])" >&2
+    echo "backup-export: refused (allowed: budget, configs, orbit-ops, job-hunt, ping[/start|/fail])" >&2
     exit 1
     ;;
 esac
