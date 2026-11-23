@@ -6,12 +6,21 @@ updates:
       interval: weekly
       day: monday
     labels: ["dependencies"]
+    # ansible-core 2.22 needs Python 3.13; the VM that runs infra/test.sh has 3.12.
+    # Lift this when the VM's Python moves past 3.12.
+    ignore:
+      - dependency-name: "ansible-core"
+        versions: [">=2.22"]
     groups:
       infra-minor-and-patch:
         update-types: ["minor", "patch"]
 
   - package-ecosystem: pip
     directory: "/"
+    # "/" scans subdirectories too, so without this it opened a second ansible-core
+    # bump in infra/ (#5) alongside the /infra entry's own (#6).
+    exclude-paths:
+      - "infra/**"
     schedule:
       interval: weekly
       day: monday
